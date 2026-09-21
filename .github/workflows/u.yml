@@ -1,0 +1,64 @@
+# This workflow will run tests using node and then publish a package to GitHub Packages when a release is created
+# For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
+
+name: Import External PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      external_repo:
+        description: '外部仓库 (格式: owner/repo)'
+        required: true
+        type: string
+      pr_number:
+        description: '外部 PR 编号'
+        required: true
+        type: string
+      target_branch:
+        description: '合并到的本地目标分支'
+        required: false
+        default: 'updata'
+        type: string
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 1. 检出当前仓库
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 2. 配置 Git 身份
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 3. 拉取并合并外部 PR
+        run: |
+          EXT_REPO="${{ inputs.external_repo }}"
+          PR_NUM="${{ inputs.pr_number }}"
+          TARGET="${{ inputs.target_branch }}"
+
+          # 切换并更新目标分支
+          git checkout "$TARGET"
+          git pull origin "$TARGET"
+
+          # 添加外部仓库为临时 remote
+          git remote add external "https://github.com/${EXT_REPO}.git"
+
+          # 抓取外部 PR 引用
+          git fetch external pull/${PR_NUM}/head:external-pr-${PR_NUM}
+
+          # 合并代码（若有冲突会自动中断并报错提示）
+          git merge external-pr-${PR_NUM} --no-edit -m "Merge external PR #${PR_NUM} from ${EXT_REPO}"
+
+          # 推送回当前仓库
+          git push origin "$TARGET"
+
+          # 清理临时 remote
+          git remote remove external
